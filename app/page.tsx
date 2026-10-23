@@ -105,7 +105,7 @@ export default function Home() {
     setSelectedChat({ id: conversationId as string, other: target, last_message_at: new Date().toISOString() });
     setMobileChatOpen(true);
     setSearch("");
-    await loadChats(profile.id);
+    if (profile) await loadChats(profile.id);
     setSearching(false);
   }
 

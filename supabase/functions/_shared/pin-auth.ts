@@ -34,8 +34,14 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
   const url = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY");
+  const publishableKeysRaw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  const secretKeysRaw = Deno.env.get("SUPABASE_SECRET_KEYS");
+  let publishableDefault = "";
+  let secretDefault = "";
+  try { publishableDefault = publishableKeysRaw ? JSON.parse(publishableKeysRaw).default ?? "" : ""; } catch { /* handled as missing config */ }
+  try { secretDefault = secretKeysRaw ? JSON.parse(secretKeysRaw).default ?? "" : ""; } catch { /* handled as missing config */ }
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? secretDefault;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? publishableDefault;
   const authSecret = Deno.env.get("PIN_AUTH_SECRET");
   const inviteSecret = Deno.env.get("REGISTRATION_INVITE_CODE");
   if (!url || !serviceKey || !anonKey || !authSecret || authSecret.length < 32) {

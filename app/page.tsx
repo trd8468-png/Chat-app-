@@ -1,11 +1,19 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, ChevronDown, CircleHelp, LockKeyhole, LogOut, MessageCircle, MoreHorizontal, Plus, Search, Settings, ShieldCheck, Sparkles, Users, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 
 type Mode = "login" | "register";
 type Profile = { id: string; public_id: string; display_name: string };
 type ChatItem = { id: string; other: Profile; last_message_at: string };
+
+function getDeviceId() {
+  if (typeof window === "undefined") return "server-render-device-id";
+  const key = "chat_device_id";
+  let id = window.localStorage.getItem(key);
+  if (!id) { id = window.crypto.randomUUID(); window.localStorage.setItem(key, id); }
+  return id;
+}
 
 export default function Home() {
   const [mode, setMode] = useState<Mode>("login");
@@ -22,7 +30,7 @@ export default function Home() {
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [searching, setSearching] = useState(false);
 
-  const supabase = createClient();
+  const supabase = useMemo(() => createClient(), []);
 
   useEffect(() => {
     if (!supabase) return;
@@ -41,17 +49,17 @@ export default function Home() {
   async function loadProfile(userId: string) {
     if (!supabase) return;
     const { data } = await supabase.from("profiles").select("id,public_id,display_name").eq("id", userId).maybeSingle();
-    if (data) { setProfile(data as Profile); await loadChats(); }
+    if (data) { setProfile(data as Profile); await loadChats(userId); }
   }
 
-  async function loadChats() {
+  async function loadChats(userId: string) {
     if (!supabase) return;
     const { data: memberships } = await supabase.from("conversation_members").select("conversation_id,last_read_at").order("joined_at", { ascending: false });
     if (!memberships?.length) { setChats([]); return; }
     const result: ChatItem[] = [];
     for (const membership of memberships) {
       const { data: members } = await supabase.from("conversation_members").select("user_id,profiles(id,public_id,display_name)").eq("conversation_id", membership.conversation_id);
-      const other = (members || []).map((m: any) => m.profiles).find((p: Profile | null) => p && p.id !== profile?.id);
+      const other = (members || []).map((m: any) => m.profiles).find((p: Profile | null) => p && p.id !== userId);
       const { data: conversation } = await supabase.from("conversations").select("id,last_message_at").eq("id", membership.conversation_id).maybeSingle();
       if (other && conversation) result.push({ id: conversation.id, other, last_message_at: conversation.last_message_at });
     }
@@ -65,7 +73,9 @@ export default function Home() {
     if (!supabase) { setNotice("Supabase is not configured yet. Add the project URL and publishable key to the deployment environment."); setIsError(true); return; }
     setBusy(true);
     try {
-      const { data, error } = await supabase.functions.invoke(mode === "register" ? "register-pin" : "login-pin", { body: mode === "register" ? { display_name: displayName.trim(), pin } : { pin } });
+      const device_id = getDeviceId();
+      const invite_code = new URLSearchParams(window.location.search).get("invite") ?? "";
+      const { data, error } = await supabase.functions.invoke(mode === "register" ? "register-pin" : "login-pin", { body: mode === "register" ? { display_name: displayName.trim(), pin, device_id, invite_code } : { pin, device_id } });
       if (error) throw error;
       if (data?.session?.access_token && data?.session?.refresh_token) {
         const { error: sessionError } = await supabase.auth.setSession(data.session);
